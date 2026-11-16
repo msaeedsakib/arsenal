@@ -1,0 +1,13 @@
+{
+  "name": "arsenal",
+  "description": "A build workflow for coding agents: brainstorm with a transcript, traceable spec, small plans, strict-bar reviews, one reviewed PR per plan, and a ledger per release.",
+  "version": "0.1.0",
+  "author": {
+    "name": "msaeedsakib",
+    "url": "https://github.com/msaeedsakib"
+  },
+  "homepage": "https://github.com/msaeedsakib/arsenal",
+  "repository": "https://github.com/msaeedsakib/arsenal",
+  "license": "MIT",
+  "keywords": ["skills", "workflow", "spec", "planning", "code-review"]
+}

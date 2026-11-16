@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# Usage: coverage <release-dir>
+#
+# Checks the ID chain inside one release folder (docs/arsenal/<release>/):
+#   transcript.md  defines  D-NN / A-NN   as  "- **D-01** ..."
+#   spec.md        defines  R-NNN         as  "- **R-001** ... (D-01, A-02)"
+#   plans/NN-*.md  cite     R-NNN
+#   ledger.md      cites    R-NNN  once a requirement is evidenced
+#
+# Exits 1 when a live decision is missing from the spec, a live requirement
+# is missing from the plans, or a cited ID is not defined. Requirements not
+# yet in the ledger are listed for information only.
+set -uo pipefail
+
+dir="${1:-}"
+if [ -z "$dir" ] || [ ! -d "$dir" ]; then
+  echo "usage: coverage <release-dir>" >&2
+  exit 2
+fi
+
+transcript="$dir/transcript.md"
+spec="$dir/spec.md"
+plans="$dir/plans"
+ledger="$dir/ledger.md"
+fail=0
+
+# IDs defined at the start of a bullet. $1 = file, $2 = ID pattern,
+# $3 = lowercase pattern that retires the bullet, or "" to keep all.
+# A bullet runs until a blank line, a heading or the next bullet, so a
+# marker on a wrapped line still counts.
+defined() {
+  awk -v id="$2" -v retired="$3" '
+    function flush() {
+      if (cur != "" && (retired == "" || tolower(block) !~ retired)) print cur
+      cur = ""; block = ""
+    }
+    {
+      if (match($0, "^[[:space:]]*[-*] \\*\\*" id "\\*\\*")) {
+        flush()
+        head = substr($0, RSTART, RLENGTH)
+        match(head, id)
+        cur = substr(head, RSTART, RLENGTH)
+        block = $0
+        next
+      }
+      if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*[-*] / || $0 ~ /^#/) { flush(); next }
+      if (cur != "") block = block " " $0
+    }
+    END { flush() }
+  ' "$1" 2>/dev/null | sort -u
+}
+
+# IDs mentioned anywhere, ignoring references to other releases (0.1.0/R-014).
+cited() {
+  local pattern="$1"; shift
+  cat "$@" 2>/dev/null \
+    | sed -E 's#[0-9][0-9A-Za-z.]*/[DAR]-[0-9]+##g' \
+    | grep -oE "\b$pattern\b" | sort -u
+}
+
+report() {
+  local title="$1" items="$2"
+  if [ -n "$items" ]; then
+    echo "$title"
+    echo "$items" | sed 's/^/  /'
+    fail=1
+  fi
+}
+
+if [ ! -f "$transcript" ] || [ ! -f "$spec" ]; then
+  echo "need $transcript and $spec" >&2
+  exit 2
+fi
+
+live_decisions="$(defined "$transcript" '[DA]-[0-9]+' 'superseded by [da]-[0-9]+')"
+all_decisions="$(defined "$transcript" '[DA]-[0-9]+' '')"
+spec_decisions="$(cited '[DA]-[0-9]+' "$spec")"
+
+report "Decisions not cited in the spec:" \
+  "$(comm -23 <(echo "$live_decisions") <(echo "$spec_decisions") | grep . || true)"
+report "Spec cites decisions the transcript does not define:" \
+  "$(comm -13 <(echo "$all_decisions") <(echo "$spec_decisions") | grep . || true)"
+
+live_reqs="$(defined "$spec" 'R-[0-9]+' 'replaced by r-[0-9]+')"
+all_reqs="$(defined "$spec" 'R-[0-9]+' '')"
+
+if compgen -G "$plans/[0-9]*.md" > /dev/null; then
+  plan_reqs="$(cited 'R-[0-9]+' "$plans"/[0-9]*.md)"
+  report "Requirements not covered by any plan:" \
+    "$(comm -23 <(echo "$live_reqs") <(echo "$plan_reqs") | grep . || true)"
+  report "Plans cite requirements the spec does not define:" \
+    "$(comm -13 <(echo "$all_reqs") <(echo "$plan_reqs") | grep . || true)"
+else
+  echo "No plan files yet: skipped the plan check."
+fi
+
+if [ -f "$ledger" ]; then
+  ledger_reqs="$(cited 'R-[0-9]+' "$ledger")"
+  open="$(comm -23 <(echo "$live_reqs") <(echo "$ledger_reqs") | grep . || true)"
+  if [ -n "$open" ]; then
+    echo "Requirements with no ledger evidence yet (information only):"
+    echo "$open" | sed 's/^/  /'
+  fi
+fi
+
+if [ "$fail" -eq 0 ]; then
+  echo "Coverage OK: $(echo "$live_decisions" | grep -c .) decisions, $(echo "$live_reqs" | grep -c .) requirements."
+fi
+exit "$fail"
