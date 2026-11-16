@@ -1,0 +1,15 @@
+{
+  "name": "arsenal",
+  "description": "Marketplace for the arsenal plugin.",
+  "owner": {
+    "name": "msaeedsakib",
+    "url": "https://github.com/msaeedsakib"
+  },
+  "plugins": [
+    {
+      "name": "arsenal",
+      "source": "./",
+      "description": "A build workflow for coding agents: brainstorm, spec, plans, strict-bar reviews, one reviewed PR per plan, and a ledger per release."
+    }
+  ]
+}
