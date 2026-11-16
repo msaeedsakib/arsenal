@@ -25,12 +25,29 @@ ledger="$dir/ledger.md"
 fail=0
 
 # IDs defined at the start of a bullet. $1 = file, $2 = ID pattern,
-# $3 = phrase that marks a retired line.
+# $3 = lowercase pattern that retires the bullet, or "" to keep all.
+# A bullet runs until a blank line, a heading or the next bullet, so a
+# marker on a wrapped line still counts.
 defined() {
-  grep -E "^[[:space:]]*[-*] \*\*$2\*\*" "$1" 2>/dev/null \
-    | grep -viE "$3" \
-    | grep -oE "^[[:space:]]*[-*] \*\*$2\*\*" \
-    | grep -oE "$2" | sort -u
+  awk -v id="$2" -v retired="$3" '
+    function flush() {
+      if (cur != "" && (retired == "" || tolower(block) !~ retired)) print cur
+      cur = ""; block = ""
+    }
+    {
+      if (match($0, "^[[:space:]]*[-*] \\*\\*" id "\\*\\*")) {
+        flush()
+        head = substr($0, RSTART, RLENGTH)
+        match(head, id)
+        cur = substr(head, RSTART, RLENGTH)
+        block = $0
+        next
+      }
+      if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*[-*] / || $0 ~ /^#/) { flush(); next }
+      if (cur != "") block = block " " $0
+    }
+    END { flush() }
+  ' "$1" 2>/dev/null | sort -u
 }
 
 # IDs mentioned anywhere, ignoring references to other releases (0.1.0/R-014).
@@ -55,8 +72,8 @@ if [ ! -f "$transcript" ] || [ ! -f "$spec" ]; then
   exit 2
 fi
 
-live_decisions="$(defined "$transcript" '[DA]-[0-9]+' 'superseded by')"
-all_decisions="$(defined "$transcript" '[DA]-[0-9]+' '^$')"
+live_decisions="$(defined "$transcript" '[DA]-[0-9]+' 'superseded by [da]-[0-9]+')"
+all_decisions="$(defined "$transcript" '[DA]-[0-9]+' '')"
 spec_decisions="$(cited '[DA]-[0-9]+' "$spec")"
 
 report "Decisions not cited in the spec:" \
@@ -64,8 +81,8 @@ report "Decisions not cited in the spec:" \
 report "Spec cites decisions the transcript does not define:" \
   "$(comm -13 <(echo "$all_decisions") <(echo "$spec_decisions") | grep . || true)"
 
-live_reqs="$(defined "$spec" 'R-[0-9]+' 'replaced by')"
-all_reqs="$(defined "$spec" 'R-[0-9]+' '^$')"
+live_reqs="$(defined "$spec" 'R-[0-9]+' 'replaced by r-[0-9]+')"
+all_reqs="$(defined "$spec" 'R-[0-9]+' '')"
 
 if compgen -G "$plans/[0-9]*.md" > /dev/null; then
   plan_reqs="$(cited 'R-[0-9]+' "$plans"/[0-9]*.md)"

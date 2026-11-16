@@ -26,7 +26,9 @@ Its prompt contains only:
    - plan review: the transcript, the spec, the plans index and the plan
      files in its batch
    - code review: the plan, the spec, the ledger, and the diff as a file
-     (`git diff <base>...HEAD > <file>`), plus the repository path
+     (`git diff <base>...HEAD > <file>`), plus the repository path. For an
+     arsenal:quick change, the plan is the file holding the accepted
+     Now / After / Unchanged plan, and there is no spec or ledger.
 4. For large inputs, the slice it owns ("topics 1–4 of the transcript",
    "plans 01–06").
 

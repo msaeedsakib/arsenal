@@ -18,7 +18,10 @@ Your dispatch says which kind of review this is:
 - **Code review.** Compare the diff against the plan it implements and the
   requirements that plan covers. Read the changed code, and the code around
   it where needed to judge it. If the diff adds a ledger entry, check that
-  each piece of evidence in it is true of the code.
+  each piece of evidence in it is true of the code. For a small change with
+  no spec, the plan is a short note of how things behave now, how they
+  must behave after, and what must stay unchanged; treat each line of it
+  as a requirement.
 
 ## The bar
 

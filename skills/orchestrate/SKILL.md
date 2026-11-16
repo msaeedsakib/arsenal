@@ -27,8 +27,12 @@ If a check fails, tell the user and run the conflicting plans in order
 rather than in parallel.
 
 If the plans share nothing at all and each could ship alone, skip the
-integration branch: each subagent opens its pull request straight into the
-default branch. Say so before starting.
+integration branch and the steps below. Say so before starting, then
+dispatch one subagent per plan in its own worktree, each following
+arsenal:implement unchanged: it branches from the default branch, writes
+its own ledger entry, opens its pull request into the default branch,
+runs the review and merges. The ledger is the one file they all append to;
+a subagent whose rebase conflicts there keeps both entries.
 
 ## Steps
 

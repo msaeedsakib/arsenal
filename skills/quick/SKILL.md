@@ -57,10 +57,12 @@ session that shows it.
 
 Rebase on the latest default branch, push, and open a real pull request,
 not a draft, with the Now / After / Unchanged lines in its description.
-Follow arsenal:review for a code review; the reviewer compares the diff
-against that description. Fix the confirmed findings, post the review
-record, and merge unless the user's instructions say they merge
-themselves.
+
+Save the accepted plan from step 3 to a temporary file outside the
+repository. Follow arsenal:review for a code review, giving the reviewer
+that file as the plan the diff is compared against; there is no spec or
+ledger to give. Fix the confirmed findings, post the review record, and
+merge unless the user's instructions say they merge themselves.
 
 ## Common slips
 
