@@ -55,11 +55,19 @@ in the plans.
 
 Run the coverage script once more after the fixes.
 
-### 5. Hand to the user
+### 5. Cut the release branch
+
+Cut `release/<release>` from the latest default branch, commit the release
+folder to it (transcript, spec, plans and the empty ledger), and push. Every
+plan of the release branches from it and merges back into it, and
+arsenal:finish takes it into the default branch at the end.
+
+### 6. Hand to the user
 
 Give the user:
 
-- the plans folder path and the number of plans and phases
+- the plans folder path, the number of plans and phases, and the number of
+  tests the plans name
 - the findings that were confirmed and fixed, one line each
 - how to start: a fresh session per plan with "Implement Plan NN", or
   "Implement Phase NN" for a whole phase

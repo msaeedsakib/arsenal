@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# Usage: tests/run
+#
+# Arsenal's tests: the file-tools hook and the coverage script's Tests
+# check. Prints each failing case and exits 1 when any fails.
+set -u
+
+root="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+hook="$root/hooks/file-tools"
+coverage="$root/skills/spec/scripts/coverage"
+failed=0
+ran=0
+
+# The hook's input for one shell command, as the harness would send it.
+hook_input() {
+  local c="$1"
+  c="${c//\\/\\\\}"
+  c="${c//\"/\\\"}"
+  c="${c//$'\n'/\\n}"
+  c="${c//$'\t'/\\t}"
+  printf '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"%s","description":"a test"}}' "$c"
+}
+
+# $1 = refused | allowed, $2 = requirement, $3 = command
+check() {
+  local want="$1" req="$2" command="$3" out got
+  out="$(hook_input "$command" | bash "$hook")"
+  case "$out" in
+    *'"permissionDecision":"deny"'*) got="refused" ;;
+    "") got="allowed" ;;
+    *) got="unexpected output: $out" ;;
+  esac
+  ran=$((ran + 1))
+  if [ "$got" != "$want" ]; then
+    failed=$((failed + 1))
+    printf 'FAIL %s: wanted %s, got %s\n  %s\n' "$req" "$want" "$got" "$command"
+  fi
+}
+
+# R-046: in-place edits are refused
+check refused R-046 "sed -i 's/a/b/' file.txt"
+check refused R-046 "sed -i.bak -e 's/a/b/' file.txt"
+check refused R-046 "sed -Ei 's/a+/b/' src/main.rs"
+check refused R-046 "find . -name '*.ts' -exec sed -i 's/a/b/' {} +"
+check refused R-046 "perl -pi -e 's/a/b/' file.txt"
+check refused R-046 "perl -i -pe 's/a/b/' file.txt"
+check refused R-046 "awk -i inplace '{print}' file.txt"
+
+# R-047: a heredoc, echo or printf redirected to a file is refused
+check refused R-047 $'cat > notes.md <<EOF\nhello\nEOF'
+check refused R-047 $'cat <<\'EOF\' >> notes.md\nhello\nEOF'
+check refused R-047 'echo "hello" > notes.md'
+check refused R-047 'cd src && echo "line" >> .gitignore'
+check refused R-047 "printf '%s\n' \"\$body\" > \"\$file\""
+check refused R-047 $'echo "line one\nline two" > notes.md'
+
+# R-048: tee fed by authored content is refused, tee capturing output is not
+check refused R-048 'echo "hello" | tee notes.md'
+check refused R-048 $'cat <<EOF | sudo tee /etc/thing.conf\nx\nEOF'
+check refused R-048 $'tee notes.md <<EOF\nhello\nEOF'
+check allowed R-048 'cargo build 2>&1 | tee build.log'
+
+# R-049: one-line scripts that write a file are refused
+check refused R-049 "python -c \"open('out.txt','w').write('x')\""
+check refused R-049 "python3 -c \"from pathlib import Path; Path('a').write_text('x')\""
+check refused R-049 "node -e \"require('fs').writeFileSync('a.txt','x')\""
+check refused R-049 "bun -e \"await Bun.write('a.txt','x')\""
+check refused R-049 "ruby -e \"File.write('a.txt','x')\""
+check refused R-049 "perl -e 'open(my \$f, \">\", \"a.txt\"); print \$f 1'"
+check allowed R-049 "python3 -c \"import sys; sys.stdout.write(open('a.txt').read())\""
+check allowed R-049 "node -e \"console.log(require('./package.json').version)\""
+
+# R-050: an interpreter fed a heredoc is treated like its -c form
+check refused R-050 $'python3 - <<\'EOF\'\nwith open("a.txt", "w") as f:\n    f.write("x")\nEOF'
+check allowed R-050 $'python3 - <<\'EOF\'\nprint(open("a.txt").read())\nEOF'
+
+# R-051: reading through the shell is allowed
+check allowed R-051 'cat README.md'
+check allowed R-051 'head -20 src/main.rs'
+check allowed R-051 'tail -n 5 log.txt'
+check allowed R-051 'less notes.md'
+check allowed R-051 "sed -n '10,20p' src/main.rs"
+check allowed R-051 "grep -rn -i 'todo' src"
+check allowed R-051 "rg -i 'todo' src"
+check allowed R-051 "find . -name '*.md'"
+check allowed R-051 'git log --oneline | head -5'
+
+# R-052: a command's own output redirected to a file is allowed
+check allowed R-052 'git diff main...HEAD > review.diff'
+check allowed R-052 'cargo build > build.log 2>&1'
+check allowed R-052 'cat a.txt b.txt > joined.txt'
+
+# R-053: /dev/null and file descriptors are not files
+check allowed R-053 'echo "x" > /dev/null'
+check allowed R-053 'echo "failed" >&2'
+check allowed R-053 'echo "x" 2>&1'
+check allowed R-053 'printf "x" 2>/dev/null'
+
+# R-056: what the hook does not recognise is allowed
+check allowed R-056 'git status'
+check allowed R-056 $'git commit -m "$(cat <<\'EOF\'\nfix: stop echo "x" > file from slipping through\nEOF\n)"'
+check allowed R-056 'echo "a > b"'
+check allowed R-056 $'git commit -m "fix: hook\n\nsed -i is now refused"'
+ran=$((ran + 2))
+[ -z "$(printf 'not json' | bash "$hook")" ] || { failed=$((failed + 1)); echo "FAIL R-056: unreadable input was not allowed"; }
+[ -z "$(printf '' | bash "$hook")" ] || { failed=$((failed + 1)); echo "FAIL R-056: empty input was not allowed"; }
+
+# The coverage script's Tests check, on throwaway release folders.
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+release() {
+  mkdir -p "$1/plans"
+  printf -- '- **D-01** a decision\n' > "$1/transcript.md"
+  printf -- '- **R-001** one requirement (D-01)\n- **R-002** another (D-01)\n' > "$1/spec.md"
+}
+
+# R-008: a task without a Tests block fails the check and is named
+release "$tmp/missing"
+printf '%s\n' '# Plan 01: x' '' '## Tasks' '' '### Task 1: first (R-001)' 'do it' '' \
+  '**Tests:** none — wiring' '' '### Task 2: second (R-002)' 'do it' '' \
+  '**Done when:** it works' '' '## Verification' 'run it' > "$tmp/missing/plans/01-x.md"
+out="$(bash "$coverage" "$tmp/missing")"
+status=$?
+ran=$((ran + 1))
+case "$status:$out" in
+  1:*"01-x.md"*"### Task 2: second (R-002)"*) ;;
+  *) failed=$((failed + 1)); printf 'FAIL R-008: exit %s, output:\n%s\n' "$status" "$out" ;;
+esac
+ran=$((ran + 1))
+case "$out" in
+  *"### Task 1"*) failed=$((failed + 1)); echo "FAIL R-008: reported a task that has a Tests block" ;;
+esac
+
+# R-009: a folder where no plan has a Tests block is not failed
+release "$tmp/old"
+printf '%s\n' '# Plan 01: x' '' '## Tasks' '' '### Task 1: first (R-001, R-002)' 'do it' '' \
+  '**Done when:** it works' > "$tmp/old/plans/01-x.md"
+out="$(bash "$coverage" "$tmp/old")"
+status=$?
+ran=$((ran + 1))
+if [ "$status" -ne 0 ]; then
+  failed=$((failed + 1))
+  printf 'FAIL R-009: exit %s, output:\n%s\n' "$status" "$out"
+fi
+
+if [ "$failed" -eq 0 ]; then
+  echo "All $ran cases passed."
+  exit 0
+fi
+echo "$failed of $ran cases failed."
+exit 1

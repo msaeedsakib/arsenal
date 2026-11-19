@@ -1,7 +1,7 @@
 {
   "name": "arsenal",
-  "description": "A build workflow for coding agents: brainstorm with a transcript, traceable spec, small plans, strict-bar reviews, one reviewed PR per plan, and a ledger per release.",
-  "version": "0.1.0",
+  "description": "A build workflow for coding agents: brainstorm with a transcript, traceable spec, small plans that name their tests, strict-bar reviews, one reviewed PR per plan, and a ledger and tagged release per release.",
+  "version": "0.2.0",
   "author": {
     "name": "msaeedsakib",
     "url": "https://github.com/msaeedsakib"

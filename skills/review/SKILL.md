@@ -6,9 +6,10 @@ description: Use when a spec, a set of plans, or a pull request needs reviewing,
 # Review
 
 Every arsenal review uses one bar: real bugs, contradictions with or
-omissions of what was decided, security flaws, and, for plans, things
-realistically likely to go wrong during implementation. Nothing below that
-bar is reported, and nothing below it is fixed.
+omissions of what was decided, security flaws, tests that are not
+accounted for, and, for plans, things realistically likely to go wrong
+during implementation. Nothing below that bar is reported, and nothing
+below it is fixed.
 
 The bar and the output format live in `reviewer.md` in this skill's
 directory. Reviewers read that file; you do not restate it.
@@ -26,9 +27,11 @@ Its prompt contains only:
    - plan review: the transcript, the spec, the plans index and the plan
      files in its batch
    - code review: the plan, the spec, the ledger, and the diff as a file
-     (`git diff <base>...HEAD > <file>`), plus the repository path. For an
-     arsenal:quick change, the plan is the file holding the accepted
-     Now / After / Unchanged plan, and there is no spec or ledger.
+     outside the repository (`git diff <base>...HEAD > <file>`), plus the
+     repository path. For an arsenal:quick change, the plan is the file
+     holding the accepted Now / After / Unchanged plan, and there is no
+     spec or ledger. For the final pull request of a release, the plan is
+     every plan file of the release.
 4. For large inputs, the slice it owns ("topics 1–4 of the transcript",
    "plans 01–06").
 
@@ -44,8 +47,9 @@ For each finding:
    situation and outcome is discarded.
 2. **Verify it against the documents or the code.** Reviewers are sometimes
    wrong. Read the cited place yourself.
-3. **Confirmed:** fix it. In code, a bug fix gets a test that fails before
-   the fix when the project has tests for that area.
+3. **Confirmed:** fix it. In code, a bug fix gets one test that fails
+   before the fix when the project has tests for that area, as
+   arsenal:testing says.
 4. **Not confirmed:** leave the work as it is and note in one line why.
 
 Fix only what the findings name. A finding is not a reason to improve

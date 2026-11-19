@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# SessionStart hook: injects hooks/bootstrap.md into the session as context.
+# SessionStart hook, on Claude Code and Codex: injects hooks/bootstrap.md
+# into the session as context, followed by one line that gives the absolute
+# path of the Codex reference file.
 set -uo pipefail
 
 dir="${BASH_SOURCE[0]%/*}"
+root="$(cd "$dir/.." && pwd)"
 text=""
 if [ -r "$dir/bootstrap.md" ]; then
   IFS= read -r -d '' text < "$dir/bootstrap.md" || true
 fi
+text="${text%$'\n'}"$'\n\n'"On Codex, read $root/references/codex.md before using an arsenal skill."
 
 text="${text//\\/\\\\}"
 text="${text//\"/\\\"}"
