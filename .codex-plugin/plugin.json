@@ -1,0 +1,22 @@
+{
+  "name": "arsenal",
+  "version": "0.2.0",
+  "description": "A build workflow for coding agents: brainstorm with a transcript, traceable spec, small plans that name their tests, strict-bar reviews, one reviewed PR per plan, and a ledger and tagged release per release.",
+  "author": {
+    "name": "msaeedsakib",
+    "url": "https://github.com/msaeedsakib"
+  },
+  "homepage": "https://github.com/msaeedsakib/arsenal",
+  "repository": "https://github.com/msaeedsakib/arsenal",
+  "license": "MIT",
+  "keywords": ["skills", "workflow", "spec", "planning", "code-review"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Arsenal",
+    "shortDescription": "Brainstorm, spec, plan, build and release with reviewed pull requests",
+    "developerName": "msaeedsakib",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "websiteURL": "https://github.com/msaeedsakib/arsenal"
+  }
+}

@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+# PreToolUse hook for shell commands, on Claude Code and Codex.
+#
+# Refuses a command that writes or edits a file through the shell, so the
+# agent uses the harness's write and edit tools instead:
+#   - in-place edits: sed -i, perl -i, awk -i inplace
+#   - a heredoc, echo or printf redirected to a file, or piped into tee
+#   - python -c, node -e, bun -e, ruby -e, perl -e (or the same interpreter
+#     fed a heredoc) whose script writes a file
+#
+# Reading files, a command's own output redirected to a file, and redirects
+# to /dev/null or a file descriptor are allowed. So is anything this script
+# does not recognise and any input it cannot read: it matches patterns in
+# the command text and is not a shell parser.
+#
+# Input: the hook's JSON on stdin, with the command in tool_input.command.
+# Output: nothing to allow; one line of JSON with a deny decision to refuse.
+set -u
+
+reason="arsenal: this command writes or edits a file through the shell. Use your file write or edit tool instead."
+
+deny() {
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$reason"
+  exit 0
+}
+
+input=""
+IFS= read -r -d '' input || true
+[ -n "$input" ] || exit 0
+
+# Pull the command string out of the JSON without a parser. Escaped
+# backslashes and quotes become placeholders first, so the first plain
+# quote after the key is the end of the string.
+bs=$'\001'
+dq=$'\002'
+text="${input//\\\\/$bs}"
+text="${text//\\\"/$dq}"
+case "$text" in
+  *'"command":"'*) cmd="${text#*\"command\":\"}" ;;
+  *'"command": "'*) cmd="${text#*\"command\": \"}" ;;
+  *) exit 0 ;;
+esac
+cmd="${cmd%%\"*}"
+cmd="${cmd//\\n/$'\n'}"
+cmd="${cmd//\\t/$'\t'}"
+cmd="${cmd//\\r/}"
+cmd="${cmd//\\u003c/<}"
+cmd="${cmd//\\u003C/<}"
+cmd="${cmd//\\u003e/>}"
+cmd="${cmd//\\u003E/>}"
+cmd="${cmd//\\u0026/&}"
+cmd="${cmd//\\u0027/\'}"
+cmd="${cmd//$dq/\"}"
+cmd="${cmd//$bs/\\}"
+[ -n "$cmd" ] || exit 0
+
+# Where a command can start: the line's start, after ; & | ( or after a
+# shell keyword.
+start='(^|[;&|(]|[[:space:]](then|do|else))[[:space:]]*'
+quoted_re="'[^']*'"'|"([^"\\]|\\.)*"'
+heredoc_re='(^|[^<])<<-?[[:space:]]*\\?["'"'"']?([A-Za-z_][A-Za-z0-9_]*)'
+fd_re='[0-9]*>&[0-9-]+'
+err_re='[[:space:]]2>>?[[:space:]]*[^[:space:];|&]+'
+target_re='>>?[[:space:]]*([^[:space:];|&<>]+)'
+
+inplace_sed='(^|[^[:alnum:]_./-])g?sed[[:space:]]+([^|;&]*[[:space:]])?(-[a-zA-Z]*i[^[:space:]]*|--in-place[^[:space:]]*)([[:space:]]|$)'
+inplace_perl='(^|[^[:alnum:]_./-])perl[[:space:]]+([^|;&]*[[:space:]])?-[plna0]*i'
+inplace_awk='(^|[^[:alnum:]_./-])g?awk[[:space:]]+([^|;&]*[[:space:]])?-i[[:space:]]+inplace'
+
+authored="${start}(echo|printf)([[:space:]][^|;&]*)?"
+echo_file="${authored}${target_re}"
+echo_tee="${authored}\\|[[:space:]]*(sudo[[:space:]]+)?tee[[:space:]]+(-[a-zA-Z-]+[[:space:]]+)*([^-[:space:];|&][^[:space:];|&]*)"
+cat_seg="${start}(sudo[[:space:]]+)?cat([[:space:]][^|;&]*)?<<[^|;&]*"
+cat_tee="${cat_seg}\\|[[:space:]]*(sudo[[:space:]]+)?tee[[:space:]]+(-[a-zA-Z-]+[[:space:]]+)*([^-[:space:];|&][^[:space:];|&]*)"
+cat_file_before="${start}(sudo[[:space:]]+)?cat[[:space:]]+([^|;&<]*[[:space:]])?${target_re}[^|;&]*<<"
+cat_file_after="${start}(sudo[[:space:]]+)?cat([[:space:]][^|;&]*)?<<[^|;&>]*${target_re}"
+tee_heredoc="${start}(sudo[[:space:]]+)?tee[[:space:]]+(-[a-zA-Z-]+[[:space:]]+)*([^-[:space:];|&<][^[:space:];|&<]*)[^|;&]*<<"
+
+interp="${start}((sudo|uv[[:space:]]+run|poetry[[:space:]]+run)[[:space:]]+)?(python[0-9.]*|node|bun|ruby|perl)[[:space:]]"
+interp_inline='[[:space:]](-c|-e|--eval|-[plna0]*e)([[:space:]]|$)'
+writes_python='open[[:space:]]*\([^)]*,[[:space:]]*(mode[[:space:]]*=[[:space:]]*)?["'"'"'][wax]|\.write_text[[:space:]]*\(|\.write_bytes[[:space:]]*\('
+writes_js='writeFile|appendFile|createWriteStream|Bun\.write'
+writes_ruby='File\.write|IO\.write|File\.open[[:space:]]*\([^)]*,[[:space:]]*["'"'"'][wa]'
+writes_perl='open[^;]*["'"'"'][[:space:]]*>'
+
+# A redirect or tee target counts as a file unless it is under /dev/.
+is_file() {
+  case "$1" in
+    /dev/*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+# Heredoc bodies are text, not commands: drop them, keeping the line that
+# opens each heredoc.
+outer=""
+body_end=""
+rest="$cmd"
+while [ -n "$rest" ]; do
+  line="${rest%%$'\n'*}"
+  if [ "$line" = "$rest" ]; then
+    rest=""
+  else
+    rest="${rest#*$'\n'}"
+  fi
+  if [ -n "$body_end" ]; then
+    trimmed="${line#"${line%%[!$'\t']*}"}"
+    [ "$trimmed" = "$body_end" ] && body_end=""
+    continue
+  fi
+  outer="$outer$line"$'\n'
+  if [[ $line =~ $heredoc_re ]]; then
+    body_end="${BASH_REMATCH[2]}"
+  fi
+done
+
+# Quoted text cannot hold a redirect or a flag, so replace each quoted
+# string with Q. This runs over the whole command, so a string that spans
+# lines is one string. Then join continued lines.
+while [[ $outer =~ $quoted_re ]]; do
+  outer="${outer/"${BASH_REMATCH[0]}"/Q}"
+done
+outer="${outer//\\$'\n'/ }"
+
+rest="$outer"
+while [ -n "$rest" ]; do
+  stripped="${rest%%$'\n'*}"
+  if [ "$stripped" = "$rest" ]; then
+    rest=""
+  else
+    rest="${rest#*$'\n'}"
+  fi
+
+  # A script handed to an interpreter, inline or through a heredoc. The
+  # script itself is quoted or in a heredoc body, so look for the write in
+  # the command as it was given.
+  if [[ $stripped =~ $interp ]]; then
+    case "${BASH_REMATCH[5]}" in
+      python*) writes="$writes_python" ;;
+      node|bun) writes="$writes_js" ;;
+      ruby) writes="$writes_ruby" ;;
+      *) writes="$writes_perl" ;;
+    esac
+    if [[ $stripped =~ $interp_inline ]] || [[ $stripped == *'<<'* ]]; then
+      [[ $cmd =~ $writes ]] && deny
+    fi
+  fi
+
+  [[ $stripped =~ $inplace_sed ]] && deny
+  [[ $stripped =~ $inplace_perl ]] && deny
+  [[ $stripped =~ $inplace_awk ]] && deny
+
+  # Redirects to a file descriptor and of stderr are not authored content.
+  while [[ $stripped =~ $fd_re ]]; do
+    stripped="${stripped/"${BASH_REMATCH[0]}"/ }"
+  done
+  while [[ $stripped =~ $err_re ]]; do
+    stripped="${stripped/"${BASH_REMATCH[0]}"/ }"
+  done
+  stripped="${stripped//&>/>}"
+
+  if [[ $stripped =~ $echo_tee ]]; then
+    is_file "${BASH_REMATCH[${#BASH_REMATCH[@]}-1]}" && deny
+  fi
+  if [[ $stripped =~ $echo_file ]]; then
+    is_file "${BASH_REMATCH[${#BASH_REMATCH[@]}-1]}" && deny
+  fi
+  if [[ $stripped == *'<<'* ]]; then
+    if [[ $stripped =~ $cat_tee ]]; then
+      is_file "${BASH_REMATCH[${#BASH_REMATCH[@]}-1]}" && deny
+    fi
+    if [[ $stripped =~ $cat_file_before ]]; then
+      is_file "${BASH_REMATCH[5]}" && deny
+    fi
+    if [[ $stripped =~ $cat_file_after ]]; then
+      is_file "${BASH_REMATCH[${#BASH_REMATCH[@]}-1]}" && deny
+    fi
+    if [[ $stripped =~ $tee_heredoc ]]; then
+      is_file "${BASH_REMATCH[5]}" && deny
+    fi
+  fi
+done
+
+exit 0
