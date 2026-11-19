@@ -67,6 +67,7 @@ For every task:
 - Say what to build, in which part of the code, and any approach the spec
   or the existing code requires. Leave ordinary coding choices to the
   implementer.
+- Name its tests, as "Naming the tests" below describes.
 - State how to tell it is done.
 
 Where a plan uses or provides something another plan touches (a function,
@@ -77,8 +78,8 @@ names" in both plans, identically.
 
 Run `../spec/scripts/coverage <release-dir>` relative to this skill's
 directory, by its absolute path. Every live requirement must be cited by at
-least one plan, and every cited requirement must exist. Fix what it
-reports.
+least one plan, every cited requirement must exist, and every task must
+have a `**Tests:**` block. Fix what it reports.
 
 ### 5. Create the ledger
 
@@ -90,6 +91,28 @@ Create `ledger.md` with only its title line:
 Continue with arsenal:plan-review. The user gets the plans after that
 review, not before.
 
+## Naming the tests
+
+The plan decides which tests exist. The implementer writes the ones you
+name and adds others only with a recorded reason, so the user can see the
+whole list, and cut it, before any code is written.
+
+Every task carries a `**Tests:**` block with one line per test, named for
+the behavior and citing its requirement. It contains no test code.
+
+- **Name a test only for logic where a wrong edit would silently give a
+  wrong answer:** calculations, state changes, permission checks, parsing,
+  and boundaries a requirement states. A requirement that says "up to 25
+  MB" gets a test at the limit and just past it.
+- **Wiring, layout and configuration get none.** Write
+  `**Tests:** none — <reason>`. They are shown by running. `none` with a
+  reason is a decision; a missing block is a gap, and the coverage script
+  fails it.
+- **There is no fixed number of tests per plan.** A settings page may need
+  none and a parser many.
+- **An existing test that must change** because a requirement in this plan
+  changes the behavior is named too: `changes <test name> — R-xxx`.
+
 ## Index format
 
 ```markdown
@@ -98,14 +121,16 @@ review, not before.
 **Spec:** ../spec.md
 **Mode:** inline | parallel
 
-| Plan | Name | Phase | Depends on | Covers |
-|------|------|-------|------------|--------|
-| 01 | <name> | 1 | none | R-001, R-002, R-040 |
-| 02 | <name> | 1 | 01 | R-003, R-004 |
+| Plan | Name | Phase | Depends on | Covers | Tests |
+|------|------|-------|------------|--------|-------|
+| 01 | <name> | 1 | none | R-001, R-002, R-040 | 3 |
+| 02 | <name> | 1 | 01 | R-003, R-004 | 0 |
 
 ## Shared files
 - <path> — <what it is>
 ```
+
+The `Tests` column is the number of tests named in the plan.
 
 Progress is not tracked here. The ledger is the only record of what has
 been implemented.
@@ -134,10 +159,21 @@ been implemented.
 - R-012: "<copied from the spec>"
 - R-013: "<copied from the spec>"
 
+**Tests:**
+- R-012: a trial started on any date ends exactly 14 days later
+- changes "expired trial shows the upgrade page" — R-013
+
 **Done when:** <what can be observed>
 
 ### Task 2: <name> (R-020)
-...
+<what to build, where, and how it should be done>
+
+**Exact values:**
+- R-020: "<copied from the spec>"
+
+**Tests:** none — wiring only, shown by running it
+
+**Done when:** <what can be observed>
 
 ## Verification
 <the commands to run and what passing looks like; for anything with a
@@ -154,3 +190,5 @@ screen, what to do in the running app and what should be seen>
 | A twenty-requirement plan because the area is "one module" | Split it. The size limit is about details carried, not module boundaries. |
 | Code blocks with function bodies | Plans carry names, shapes and values. The implementer writes the code. |
 | Adding tasks the spec does not ask for | Every task cites a requirement. No citation, no task. |
+| A test named for every requirement | Only where a wrong edit would silently give a wrong answer. The rest are shown by running. |
+| Leaving the `**Tests:**` block out of a task that needs none | Write `none` with the reason. |

@@ -4,12 +4,13 @@
 # Checks the ID chain inside one release folder (docs/arsenal/<release>/):
 #   transcript.md  defines  D-NN / A-NN   as  "- **D-01** ..."
 #   spec.md        defines  R-NNN         as  "- **R-001** ... (D-01, A-02)"
-#   plans/NN-*.md  cite     R-NNN
+#   plans/NN-*.md  cite     R-NNN, and give every task a "**Tests:**" block
 #   ledger.md      cites    R-NNN  once a requirement is evidenced
 #
 # Exits 1 when a live decision is missing from the spec, a live requirement
-# is missing from the plans, or a cited ID is not defined. Requirements not
-# yet in the ledger are listed for information only.
+# is missing from the plans, a cited ID is not defined, or a task has no
+# Tests block. Requirements not yet in the ledger are listed for
+# information only.
 set -uo pipefail
 
 dir="${1:-}"
@@ -90,6 +91,22 @@ if compgen -G "$plans/[0-9]*.md" > /dev/null; then
     "$(comm -23 <(echo "$live_reqs") <(echo "$plan_reqs") | grep . || true)"
   report "Plans cite requirements the spec does not define:" \
     "$(comm -13 <(echo "$all_reqs") <(echo "$plan_reqs") | grep . || true)"
+
+  # Plans written before tests were named in them have no Tests block at
+  # all, so the check applies only once one plan in the folder has one.
+  if grep -qE '^\*\*Tests:\*\*' "$plans"/[0-9]*.md; then
+    report "Tasks with no Tests block:" "$(awk '
+      function flush() {
+        if (task != "" && !seen) print file ": " task
+        task = ""; seen = 0
+      }
+      FNR == 1 { flush(); file = FILENAME; sub(/.*\//, "", file) }
+      /^### Task / { flush(); task = $0; next }
+      /^## / { flush(); next }
+      /^\*\*Tests:\*\*/ { seen = 1 }
+      END { flush() }
+    ' "$plans"/[0-9]*.md)"
+  fi
 else
   echo "No plan files yet: skipped the plan check."
 fi
