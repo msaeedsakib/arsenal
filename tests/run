@@ -52,6 +52,7 @@ check refused R-047 $'cat <<\'EOF\' >> notes.md\nhello\nEOF'
 check refused R-047 'echo "hello" > notes.md'
 check refused R-047 'cd src && echo "line" >> .gitignore'
 check refused R-047 "printf '%s\n' \"\$body\" > \"\$file\""
+check refused R-047 $'echo "line one\nline two" > notes.md'
 
 # R-048: tee fed by authored content is refused, tee capturing output is not
 check refused R-048 'echo "hello" | tee notes.md'
@@ -99,6 +100,7 @@ check allowed R-053 'printf "x" 2>/dev/null'
 check allowed R-056 'git status'
 check allowed R-056 $'git commit -m "$(cat <<\'EOF\'\nfix: stop echo "x" > file from slipping through\nEOF\n)"'
 check allowed R-056 'echo "a > b"'
+check allowed R-056 $'git commit -m "fix: hook\n\nsed -i is now refused"'
 ran=$((ran + 2))
 [ -z "$(printf 'not json' | bash "$hook")" ] || { failed=$((failed + 1)); echo "FAIL R-056: unreadable input was not allowed"; }
 [ -z "$(printf '' | bash "$hook")" ] || { failed=$((failed + 1)); echo "FAIL R-056: empty input was not allowed"; }

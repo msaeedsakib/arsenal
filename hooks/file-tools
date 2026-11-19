@@ -57,8 +57,7 @@ cmd="${cmd//$bs/\\}"
 # Where a command can start: the line's start, after ; & | ( or after a
 # shell keyword.
 start='(^|[;&|(]|[[:space:]](then|do|else))[[:space:]]*'
-sq_re="'[^']*'"
-dq_re='"([^"\\]|\\.)*"'
+quoted_re="'[^']*'"'|"([^"\\]|\\.)*"'
 heredoc_re='(^|[^<])<<-?[[:space:]]*\\?["'"'"']?([A-Za-z_][A-Za-z0-9_]*)'
 fd_re='[0-9]*>&[0-9-]+'
 err_re='[[:space:]]2>>?[[:space:]]*[^[:space:];|&]+'
@@ -92,49 +91,60 @@ is_file() {
   esac
 }
 
+# Heredoc bodies are text, not commands: drop them, keeping the line that
+# opens each heredoc.
+outer=""
 body_end=""
 rest="$cmd"
 while [ -n "$rest" ]; do
   line="${rest%%$'\n'*}"
   if [ "$line" = "$rest" ]; then
-    after=""
+    rest=""
   else
-    after="${rest#*$'\n'}"
+    rest="${rest#*$'\n'}"
   fi
-
-  # Lines inside a heredoc body are text, not commands.
   if [ -n "$body_end" ]; then
     trimmed="${line#"${line%%[!$'\t']*}"}"
     [ "$trimmed" = "$body_end" ] && body_end=""
-    rest="$after"
     continue
   fi
+  outer="$outer$line"$'\n'
+  if [[ $line =~ $heredoc_re ]]; then
+    body_end="${BASH_REMATCH[2]}"
+  fi
+done
 
-  # A script handed to an interpreter, inline or through a heredoc.
-  if [[ $line =~ $interp ]]; then
+# Quoted text cannot hold a redirect or a flag, so replace each quoted
+# string with Q. This runs over the whole command, so a string that spans
+# lines is one string. Then join continued lines.
+while [[ $outer =~ $quoted_re ]]; do
+  outer="${outer/"${BASH_REMATCH[0]}"/Q}"
+done
+outer="${outer//\\$'\n'/ }"
+
+rest="$outer"
+while [ -n "$rest" ]; do
+  stripped="${rest%%$'\n'*}"
+  if [ "$stripped" = "$rest" ]; then
+    rest=""
+  else
+    rest="${rest#*$'\n'}"
+  fi
+
+  # A script handed to an interpreter, inline or through a heredoc. The
+  # script itself is quoted or in a heredoc body, so look for the write in
+  # the command as it was given.
+  if [[ $stripped =~ $interp ]]; then
     case "${BASH_REMATCH[5]}" in
       python*) writes="$writes_python" ;;
       node|bun) writes="$writes_js" ;;
       ruby) writes="$writes_ruby" ;;
       *) writes="$writes_perl" ;;
     esac
-    if [[ $line =~ $interp_inline ]] || [[ $line == *'<<'* ]]; then
-      [[ $rest =~ $writes ]] && deny
+    if [[ $stripped =~ $interp_inline ]] || [[ $stripped == *'<<'* ]]; then
+      [[ $cmd =~ $writes ]] && deny
     fi
   fi
-
-  if [[ $line =~ $heredoc_re ]]; then
-    body_end="${BASH_REMATCH[2]}"
-  fi
-
-  # Quoted text cannot hold a redirect or a flag, so replace it with Q.
-  stripped="$line"
-  while [[ $stripped =~ $sq_re ]]; do
-    stripped="${stripped/"${BASH_REMATCH[0]}"/Q}"
-  done
-  while [[ $stripped =~ $dq_re ]]; do
-    stripped="${stripped/"${BASH_REMATCH[0]}"/Q}"
-  done
 
   [[ $stripped =~ $inplace_sed ]] && deny
   [[ $stripped =~ $inplace_perl ]] && deny
@@ -169,8 +179,6 @@ while [ -n "$rest" ]; do
       is_file "${BASH_REMATCH[5]}" && deny
     fi
   fi
-
-  rest="$after"
 done
 
 exit 0

@@ -38,7 +38,7 @@
     file through the shell. Use your file write or edit tool instead." and
     the file was unchanged.
   - R-046, R-047, R-048, R-049, R-050, R-051, R-052, R-053, R-056 — the ten
-    tests named in Task 6 pass in `bash tests/run` ("All 50 cases
+    tests named in Task 6 pass in `bash tests/run` ("All 52 cases
     passed."). With the `sed` rule removed for a moment the run reported
     four R-046 failures and exited 1.
   - R-057, R-059, R-060, R-069, R-082 — `skills/implement/SKILL.md` steps 2,
@@ -81,7 +81,7 @@
     "Validation passed".
   - R-099 — `hooks/bootstrap.md` names `arsenal:finish`.
   - R-100, R-101, R-102, R-105 — `tests/run` is one bash script; it
-    printed "All 50 cases passed." and exited 0.
+    printed "All 52 cases passed." and exited 0.
   - R-103 — `release/0.2.0` was cut from `main` and pushed, and this plan's
     pull request goes into it. The final pull request, the tag `v0.2.0` and
     the GitHub release follow this entry, by the steps of
@@ -93,9 +93,21 @@
 - **Tests:** planned: the two coverage tests of Task 1 and the ten hook
   tests of Task 6, as cases in `tests/run`; unplanned: "a one-line script
   that only reads is allowed" (two cases under R-049) and "an interpreter
-  fed a heredoc that only reads is allowed" (one case under R-050) — see
+  fed a heredoc that only reads is allowed" (one case under R-050), "text
+  inside a heredoc body or a quoted string is not read as a redirect" (two
+  cases under R-056), and "a quoted string that spans lines is one string"
+  (one refused case under R-047, one allowed case under R-056) — see
   Deviations; changed: none; deleted: none
 - **Deviations:**
+  - Unplanned tests. A commit message passed through a heredoc, and a
+    quoted `"a > b"`, are the commonest places a redirect pattern matches
+    text that is not a command; without the two guard cases a later edit
+    to the patterns could start refusing ordinary commits.
+  - Bug from the code review, with its failing tests first. The hook split
+    the command into lines before stripping quotes, so
+    `echo "line one⏎line two" > notes.md` was allowed and a commit message
+    with `sed -i` on its second line was refused. Quotes are now stripped
+    over the whole command.
   - Unplanned tests. While writing the hook, a write pattern that matched
     any `.write(` refused `python -c "import sys; sys.stdout.write(...)"`.
     A pattern that broad would refuse every one-line script that prints, so
