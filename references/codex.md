@@ -12,9 +12,9 @@ Wait for the reply before the next question.
 ## Subagents
 
 Where a skill says to dispatch a fresh subagent or a reviewer, spawn an
-agent with a clean context, so it sees none of your session: set
-`fork_turns` to `"none"` when you spawn it. Give it only what the skill
-says its prompt contains.
+agent with a clean context, so it sees none of your session. If your spawn
+tool copies your transcript into the child by default, turn that off. Give
+the child only what the skill says its prompt contains.
 
 Subagents need the `multi_agent_v2` feature. If your tool list has no way
 to spawn an agent, the feature is off. Do not change the user's
