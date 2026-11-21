@@ -21,6 +21,12 @@
     section and "Working on arsenal itself", and version `0.3.0` in
     `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json` and
     `.antigravity-plugin/plugin.json`.
+- **Tests:** planned: every existing file-tools case also run in agy's
+  format; the command is read from `toolCall.args.CommandLine`, not from
+  `lastUserInput` (two cases). Changed: the R-056 unreadable-input and
+  empty-input checks. They now go through the same `decision` helper as
+  every other case, so they also run in agy's format. In Claude format
+  they still require empty output.
 - **Deviations:**
   - The reference file does not say that a resumed conversation skips
     session-start. The text injected on the first turn stays in the
@@ -28,3 +34,4 @@
   - The live run listed the plugin's skills as `plan`, `review` and so on,
     without the `arsenal:` prefix. This confirms the mapping in the
     reference file.
+- **For later plans:** none
