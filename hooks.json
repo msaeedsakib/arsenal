@@ -1,0 +1,22 @@
+{
+  "arsenal": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "bash ./hooks/session-start antigravity"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ./hooks/file-tools antigravity",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
