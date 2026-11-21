@@ -4,9 +4,11 @@ A set of skills that gives your coding agent a calm, repeatable way to build
 software: talk it through, write it down, split it up, build it one reviewed
 pull request at a time, and keep a record of what actually got built.
 
-Arsenal is a plugin for [Claude Code](https://claude.com/claude-code) and
-the [Codex CLI](https://developers.openai.com/codex). The skills are plain
-`SKILL.md` files, so the ideas travel to other harnesses too.
+Arsenal is a plugin for [Claude Code](https://claude.com/claude-code), the
+[Codex CLI](https://developers.openai.com/codex) and the
+[Antigravity CLI](https://antigravity.google/docs/cli/reference/). The
+skills are plain `SKILL.md` files, so the ideas travel to other harnesses
+too.
 
 ## Why it exists
 
@@ -202,6 +204,18 @@ reported as not independent, and a parallel phase runs its plans in order.
 Arsenal supports the Codex CLI. The Codex app and Codex cloud are not
 covered yet.
 
+### Antigravity CLI
+
+```
+agy plugin install https://github.com/msaeedsakib/arsenal
+```
+
+Antigravity names a plugin's skills without the plugin's name, so you
+invoke them as `/brainstorm`, `/quick` and so on. Both hooks run as soon as
+the plugin is installed. Antigravity runs no hooks under
+`--dangerously-skip-permissions`, so in such a session nothing refuses a
+shell edit.
+
 Arsenal is meant to be the one workflow plugin in a session. If you have
 another that also steers how work is planned and built, disable it first so
 the two don't pull in different directions.
@@ -228,9 +242,18 @@ Check the manifests and skills with:
 
 ```
 claude plugin validate /path/to/arsenal
+agy plugin validate /path/to/arsenal
 ```
 
-Run the tests for the file-tools hook and the coverage script with:
+`agy plugin validate` warns that `hooks/hooks.json` is never loaded. That
+file is for Claude Code and Codex; Antigravity reads `hooks.json` at the
+root.
+
+To try a change in Antigravity without installing it, copy the checkout
+into a scratch project's `.agents/plugins/arsenal/`.
+
+Run the tests for the file-tools hook (in both hook formats) and the
+coverage script with:
 
 ```
 bash tests/run

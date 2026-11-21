@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# PreToolUse hook for shell commands, on Claude Code and Codex.
+# PreToolUse hook for shell commands, on Claude Code, Codex and the
+# Antigravity CLI.
+#
+# Usage: file-tools               Claude Code and Codex (hooks/hooks.json)
+#        file-tools antigravity   Antigravity CLI (hooks.json)
 #
 # Refuses a command that writes or edits a file through the shell, so the
 # agent uses the harness's write and edit tools instead:
@@ -13,20 +17,36 @@
 # does not recognise and any input it cannot read: it matches patterns in
 # the command text and is not a shell parser.
 #
-# Input: the hook's JSON on stdin, with the command in tool_input.command.
-# Output: nothing to allow; one line of JSON with a deny decision to refuse.
+# Input: the hook's JSON on stdin, with the command in tool_input.command,
+# or in toolCall.args.CommandLine on Antigravity.
+# Output on Claude Code and Codex: nothing to allow; one line of JSON with a
+# deny decision to refuse. On Antigravity: one line of JSON with an allow or
+# deny decision, always, since a failed or silent hook can block the call.
 set -u
 
+mode="${1:-}"
 reason="arsenal: this command writes or edits a file through the shell. Use your file write or edit tool instead."
 
-deny() {
-  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$reason"
+allow() {
+  [ "$mode" = antigravity ] && printf '{"decision":"allow"}\n'
   exit 0
 }
 
+deny() {
+  if [ "$mode" = antigravity ]; then
+    printf '{"decision":"deny","reason":"%s"}\n' "$reason"
+  else
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$reason"
+  fi
+  exit 0
+}
+
+key=command
+[ "$mode" = antigravity ] && key=CommandLine
+
 input=""
 IFS= read -r -d '' input || true
-[ -n "$input" ] || exit 0
+[ -n "$input" ] || allow
 
 # Pull the command string out of the JSON without a parser. Escaped
 # backslashes and quotes become placeholders first, so the first plain
@@ -36,9 +56,9 @@ dq=$'\002'
 text="${input//\\\\/$bs}"
 text="${text//\\\"/$dq}"
 case "$text" in
-  *'"command":"'*) cmd="${text#*\"command\":\"}" ;;
-  *'"command": "'*) cmd="${text#*\"command\": \"}" ;;
-  *) exit 0 ;;
+  *"\"$key\":\""*) cmd="${text#*\"$key\":\"}" ;;
+  *"\"$key\": \""*) cmd="${text#*\"$key\": \"}" ;;
+  *) allow ;;
 esac
 cmd="${cmd%%\"*}"
 cmd="${cmd//\\n/$'\n'}"
@@ -52,7 +72,7 @@ cmd="${cmd//\\u0026/&}"
 cmd="${cmd//\\u0027/\'}"
 cmd="${cmd//$dq/\"}"
 cmd="${cmd//$bs/\\}"
-[ -n "$cmd" ] || exit 0
+[ -n "$cmd" ] || allow
 
 # Where a command can start: the line's start, after ; & | ( or after a
 # shell keyword.
@@ -181,4 +201,4 @@ while [ -n "$rest" ]; do
   fi
 done
 
-exit 0
+allow

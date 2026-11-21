@@ -11,31 +11,64 @@ coverage="$root/skills/spec/scripts/coverage"
 failed=0
 ran=0
 
-# The hook's input for one shell command, as the harness would send it.
-hook_input() {
+# The hook cases run once per harness format: "claude" (Claude Code and
+# Codex) and "antigravity".
+format=claude
+
+# JSON-escapes $1.
+escape() {
   local c="$1"
   c="${c//\\/\\\\}"
   c="${c//\"/\\\"}"
   c="${c//$'\n'/\\n}"
   c="${c//$'\t'/\\t}"
-  printf '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"%s","description":"a test"}}' "$c"
+  printf '%s' "$c"
 }
 
-# $1 = refused | allowed, $2 = requirement, $3 = command
+# The hook's input for one shell command, as the harness would send it.
+hook_input() {
+  if [ "$format" = antigravity ]; then
+    printf '{"conversationId":"c1","workspacePaths":["/w"],"lastUserInput":"%s","toolCall":{"name":"run_command","args":{"CommandLine":"%s","Cwd":"/w"}},"stepIdx":1}' \
+      "$(escape "${2:-}")" "$(escape "$1")"
+  else
+    printf '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"%s","description":"a test"}}' "$(escape "$1")"
+  fi
+}
+
+# Runs the hook in the current format on stdin; prints refused, allowed or
+# the unexpected output.
+decision() {
+  local out
+  if [ "$format" = antigravity ]; then
+    out="$(bash "$hook" antigravity)"
+    case "$out" in
+      '{"decision":"deny","reason":"arsenal: '*) echo refused ;;
+      '{"decision":"allow"}') echo allowed ;;
+      *) echo "unexpected output: $out" ;;
+    esac
+  else
+    out="$(bash "$hook")"
+    case "$out" in
+      *'"permissionDecision":"deny"'*) echo refused ;;
+      "") echo allowed ;;
+      *) echo "unexpected output: $out" ;;
+    esac
+  fi
+}
+
+# $1 = refused | allowed, $2 = requirement, $3 = command,
+# $4 = the user's last message (Antigravity only)
 check() {
-  local want="$1" req="$2" command="$3" out got
-  out="$(hook_input "$command" | bash "$hook")"
-  case "$out" in
-    *'"permissionDecision":"deny"'*) got="refused" ;;
-    "") got="allowed" ;;
-    *) got="unexpected output: $out" ;;
-  esac
+  local want="$1" req="$2" command="$3" got
+  got="$(hook_input "$command" "${4:-}" | decision)"
   ran=$((ran + 1))
   if [ "$got" != "$want" ]; then
     failed=$((failed + 1))
-    printf 'FAIL %s: wanted %s, got %s\n  %s\n' "$req" "$want" "$got" "$command"
+    printf 'FAIL %s (%s): wanted %s, got %s\n  %s\n' "$req" "$format" "$want" "$got" "$command"
   fi
 }
+
+hook_cases() {
 
 # R-046: in-place edits are refused
 check refused R-046 "sed -i 's/a/b/' file.txt"
@@ -102,8 +135,18 @@ check allowed R-056 $'git commit -m "$(cat <<\'EOF\'\nfix: stop echo "x" > file 
 check allowed R-056 'echo "a > b"'
 check allowed R-056 $'git commit -m "fix: hook\n\nsed -i is now refused"'
 ran=$((ran + 2))
-[ -z "$(printf 'not json' | bash "$hook")" ] || { failed=$((failed + 1)); echo "FAIL R-056: unreadable input was not allowed"; }
-[ -z "$(printf '' | bash "$hook")" ] || { failed=$((failed + 1)); echo "FAIL R-056: empty input was not allowed"; }
+[ "$(printf 'not json' | decision)" = allowed ] || { failed=$((failed + 1)); echo "FAIL R-056 ($format): unreadable input was not allowed"; }
+[ "$(printf '' | decision)" = allowed ] || { failed=$((failed + 1)); echo "FAIL R-056 ($format): empty input was not allowed"; }
+}
+
+hook_cases
+format=antigravity
+hook_cases
+
+# On Antigravity the command is read from toolCall.args.CommandLine, not
+# from command-like text elsewhere in the payload.
+check allowed antigravity 'cat notes.md' 'run "CommandLine":"sed -i s/a/b/ notes.md"'
+check refused antigravity "sed -i 's/a/b/' notes.md" 'run "CommandLine":"cat notes.md"'
 
 # The coverage script's Tests check, on throwaway release folders.
 tmp="$(mktemp -d)"

@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# SessionStart hook, on Claude Code and Codex: injects hooks/bootstrap.md
-# into the session as context, followed by one line that gives the absolute
-# path of the Codex reference file.
+# SessionStart hook: injects hooks/bootstrap.md into the session as context,
+# followed by one line that gives the absolute path of the harness's
+# reference file.
+#
+# Usage: session-start               Claude Code and Codex (hooks/hooks.json)
+#        session-start antigravity   Antigravity CLI (hooks.json)
 set -uo pipefail
 
 dir="${BASH_SOURCE[0]%/*}"
@@ -10,7 +13,12 @@ text=""
 if [ -r "$dir/bootstrap.md" ]; then
   IFS= read -r -d '' text < "$dir/bootstrap.md" || true
 fi
-text="${text%$'\n'}"$'\n\n'"On Codex, read $root/references/codex.md before using an arsenal skill."
+text="${text%$'\n'}"$'\n\n'
+if [ "${1:-}" = antigravity ]; then
+  text="${text}Read $root/references/antigravity.md before using an arsenal skill."
+else
+  text="${text}On Codex, read $root/references/codex.md before using an arsenal skill."
+fi
 
 text="${text//\\/\\\\}"
 text="${text//\"/\\\"}"
@@ -18,5 +26,9 @@ text="${text//$'\n'/\\n}"
 text="${text//$'\r'/}"
 text="${text//$'\t'/\\t}"
 
-printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$text"
+if [ "${1:-}" = antigravity ]; then
+  printf '{"injectSteps":[{"systemMessage":{"systemMessage":"%s"}}]}\n' "$text"
+else
+  printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$text"
+fi
 exit 0
